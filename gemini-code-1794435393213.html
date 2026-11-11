@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Biblia Paralela Offline — RV1960 & BTX4</title>
+  <!-- Motor SQLite WebAssembly -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+  <style>
+    :root {
+      --bg-primary: #f8fafc;
+      --bg-card: #ffffff;
+      --bg-accent: #f1f5f9;
+      --text-primary: #1e293b;
+      --text-secondary: #64748b;
+      --accent-color: #4f46e5;
+      --accent-soft: #e0e7ff;
+      --btx-color: #0f766e;
+      --btx-soft: #ccfbf1;
+      --fav-color: #eab308;
+      --border-color: #e2e8f0;
+      --font-size: 18px;
+    }
+
+    [data-theme="dark"] {
+      --bg-primary: #0f172a;
+      --bg-card: #1e293b;
+      --bg-accent: #334155;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --accent-color: #818cf8;
+      --accent-soft: #312e81;
+      --btx-color: #2dd4bf;
+      --btx-soft: #134e4a;
+      --border-color: #334155;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    /* Pantalla de Carga Inicial Automática */
+    #loadingOverlay {
+      position: fixed;
+      inset: 0;
+      background: var(--bg-primary);
+      z-index: 500;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      text-align: center;
+    }
+
+    .loader-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 2rem;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+    }
+
+    .progress-bar-bg {
+      width: 100%;
+      height: 10px;
+      background: var(--bg-accent);
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 1.25rem 0 0.75rem;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent-color), var(--btx-color));
+      transition: width 0.3s ease;
+    }
+
+    /* Barra de Navegación Superior */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border-color);
+      padding: 0.75rem 1.25rem;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+    }
+
+    .nav-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand {
+      font-weight: 700;
+      font-size: 1.15rem;
+      color: var(--accent-color);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .status-badge {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.65rem;
+      border-radius: 999px;
+      background: #dcfce7;
+      color: #166534;
+      font-weight: 600;
+    }
+
+    .controls-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      align-items: center;
+    }
+
+    select, input[type="text"], button {
+      padding: 0.48rem 0.8rem;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    select:focus, input[type="text"]:focus {
+      outline: 2px solid var(--accent-color);
+    }
+
+    button:hover {
+      background: var(--bg-accent);
+    }
+
+    .mode-pills {
+      display: flex;
+      background: var(--bg-accent);
+      padding: 0.2rem;
+      border-radius: 10px;
+      gap: 0.2rem;
+    }
+
+    .mode-btn {
+      border: none;
+      background: transparent;
+      padding: 0.4rem 0.75rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+
+    .mode-btn.active {
+      background: var(--bg-card);
+      color: var(--accent-color);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    /* Cuerpo Principal */
+    main {
+      max-width: 1400px;
+      margin: 1.5rem auto;
+      padding: 0 1.25rem 4rem;
+    }
+
+    .chapter-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.25rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 2px solid var(--border-color);
+    }
+
+    .chapter-title {
+      font-size: 1.6rem;
+      font-weight: 800;
+    }
+
+    .verses-container {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      font-size: var(--font-size);
+    }
+
+    .verse-row {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      transition: border-color 0.15s;
+    }
+
+    .verse-row:hover {
+      border-color: var(--accent-color);
+    }
+
+    .verse-row.parallel {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    @media (max-width: 820px) {
+      .verse-row.parallel {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+    }
+
+    .version-tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      margin-bottom: 0.4rem;
+    }
+
+    .tag-rv { background: var(--accent-soft); color: var(--accent-color); }
+    .tag-btx { background: var(--btx-soft); color: var(--btx-color); }
+
+    .verse-num {
+      font-weight: 800;
+      color: var(--accent-color);
+      margin-right: 0.45rem;
+      font-size: 0.95em;
+      user-select: none;
+    }
+
+    .verse-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.4rem;
+      margin-top: 0.6rem;
+      border-top: 1px dashed var(--border-color);
+      padding-top: 0.5rem;
+    }
+
+    .action-btn {
+      font-size: 0.8rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-primary);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    .action-btn.fav-active {
+      background: #fef9c3;
+      border-color: #eab308;
+      color: #854d0e;
+      font-weight: 600;
+    }
+
+    .dict-link {
+      color: #c00000;
+      font-weight: 700;
+      text-decoration: underline;
+      cursor: pointer;
+      padding: 0 2px;
+      border-radius: 3px;
+    }
+    .dict-link:hover {
+      background: rgba(192, 0, 0, 0.12);
+    }
+
+    .comment-box {
+      margin-top: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: var(--bg-accent);
+      border-left: 4px solid var(--btx-color);
+      border-radius: 6px;
+      font-size: 0.88em;
+    }
+
+    /* Tarjetas de Favoritos */
+    .fav-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-left: 5px solid var(--fav-color);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+    }
+
+    .fav-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+      font-weight: 700;
+      font-size: 1.1rem;
+    }
+
+    .fav-note {
+      width: 100%;
+      margin-top: 0.75rem;
+      padding: 0.6rem;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: inherit;
+      resize: vertical;
+    }
+
+    /* Modal para Diccionario (§) */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 300;
+      padding: 1rem;
+    }
+
+    .modal-content {
+      background: var(--bg-card);
+      color: var(--text-primary);
+      max-width: 720px;
+      width: 100%;
+      max-height: 85vh;
+      overflow-y: auto;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+<!-- Pantalla de Carga y Sincronización Offline Automática -->
+<div id="loadingOverlay">
+  <div class="loader-card">
+    <h2 style="color:var(--accent-color); margin-bottom:0.5rem;">📖 Preparando Biblias Offline</h2>
+    <p id="loadingText" style="color:var(--text-secondary); font-size:0.95rem;">
+      Verificando memoria local del navegador...
+    </p>
+    <div class="progress-bar-bg">
+      <div id="loadingBar" class="progress-bar-fill"></div>
+    </div>
+    <small id="loadingSubtext" style="color:var(--text-secondary);">
+      Los archivos solo se descargan la primera vez y quedan guardados sin conexión.
+    </small>
+  </div>
+</div>
+
+<header>
+  <div class="nav-container">
+    <div class="brand">
+      <span>📖 Estudio Bíblico</span>
+      <span id="offlineBadge" class="status-badge">✓ Offline Activo</span>
+    </div>
+
+    <!-- Selección de Libro y Capítulo -->
+    <div class="controls-group">
+      <select id="bookSelect" onchange="onBookChange()"></select>
+      <select id="chapterSelect" onchange="loadChapter()"></select>
+      <button onclick="prevChapter()" title="Capítulo anterior">◀</button>
+      <button onclick="nextChapter()" title="Siguiente capítulo">▶</button>
+    </div>
+
+    <!-- Modos de Lectura: Paralelo, Separadas y Favoritos -->
+    <div class="mode-pills">
+      <button class="mode-btn active" id="mode-parallel" onclick="setMode('parallel')">En Paralelo</button>
+      <button class="mode-btn" id="mode-rv" onclick="setMode('rv')">RV 1960</button>
+      <button class="mode-btn" id="mode-btx" onclick="setMode('btx')">BTX 4</button>
+      <button class="mode-btn" id="mode-favs" onclick="setMode('favs')">⭐ Favoritos (<span id="favCount">0</span>)</button>
+    </div>
+
+    <!-- Buscador y Controles de Lectura -->
+    <div class="controls-group">
+      <input type="text" id="searchInput" placeholder="Buscar versículo..." onkeydown="if(event.key==='Enter') searchBibles()">
+      <button onclick="searchBibles()" title="Buscar">🔍</button>
+      <button onclick="changeFontSize(-2)" title="Reducir texto">A-</button>
+      <button onclick="changeFontSize(2)" title="Aumentar texto">A+</button>
+      <button onclick="toggleTheme()" title="Modo oscuro/claro">🌓</button>
+      <button onclick="resyncFromServer()" title="Recargar archivos desde el servidor">🔄</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- Sección de Lectura -->
+  <section id="readerSection">
+    <div class="chapter-header">
+      <h2 class="chapter-title" id="currentTitle">Génesis 1</h2>
+      <div style="display:flex; gap:0.5rem;">
+        <button onclick="prevChapter()">◀ Anterior</button>
+        <button onclick="nextChapter()">Siguiente ▶</button>
+      </div>
+    </div>
+    <div id="versesList" class="verses-container"></div>
+  </section>
+
+  <!-- Sección de Versículos Favoritos -->
+  <section id="favsSection" class="hidden">
+    <div class="chapter-header">
+      <h2 class="chapter-title">⭐ Mis Versículos Favoritos</h2>
+      <div style="display:flex; gap:0.5rem;">
+        <button onclick="exportFavorites()">⬇️ Exportar Favoritos</button>
+        <button onclick="document.getElementById('importFavInput').click()">⬆️ Importar</button>
+        <input type="file" id="importFavInput" class="hidden" accept=".json" onchange="importFavorites(event)">
+      </div>
+    </div>
+    <div id="favsList"></div>
+  </section>
+</main>
+
+<!-- Ventana Emergente para Notas Especiales (§) del Diccionario BTX4 -->
+<div id="modalBackdrop" class="modal-backdrop" onclick="if(event.target===this) closeModal()">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="modalTitle">Nota Especial</h3>
+      <button onclick="closeModal()">✖ Cerrar</button>
+    </div>
+    <div id="modalBody" style="line-height:1.7;"></div>
+  </div>
+</div>
+
+<script>
+  /**
+   * NOMBRES EXACTOS DE TUS ARCHIVOS SUBIDOS AL SERVIDOR
+   * Asegúrate de que estén en la misma carpeta que este index.html
+   */
+  const SERVER_FILES = [
+    { key: 'rv',   url: 'Biblia Reina Valera 1960.bblx', label: 'Biblia Reina Valera 1960' },
+    { key: 'btx',  url: '01-BTX4.bbli',                  label: 'Biblia Textual IV (BTX4)' },
+    { key: 'cmtx', url: '01-BTX4.cmti',                  label: 'Comentarios BTX4' },
+    { key: 'dctx', url: '01-BTX4.dcti',                  label: 'Diccionario BTX4' }
+  ];
+
+  // Lista de los 66 libros canónicos
+  const BOOKS = [
+    { id: 1, name: "Génesis", chapters: 50 }, { id: 2, name: "Éxodo", chapters: 40 },
+    { id: 3, name: "Levítico", chapters: 27 }, { id: 4, name: "Números", chapters: 36 },
+    { id: 5, name: "Deuteronomio", chapters: 34 }, { id: 6, name: "Josué", chapters: 24 },
+    { id: 7, name: "Jueces", chapters: 21 }, { id: 8, name: "Rut", chapters: 4 },
+    { id: 9, name: "1 Samuel", chapters: 31 }, { id: 10, name: "2 Samuel", chapters: 24 },
+    { id: 11, name: "1 Reyes", chapters: 22 }, { id: 12, name: "2 Reyes", chapters: 25 },
+    { id: 13, name: "1 Crónicas", chapters: 29 }, { id: 14, name: "2 Crónicas", chapters: 36 },
+    { id: 15, name: "Esdras", chapters: 10 }, { id: 16, name: "Nehemías", chapters: 13 },
+    { id: 17, name: "Ester", chapters: 10 }, { id: 18, name: "Job", chapters: 42 },
+    { id: 19, name: "Salmos", chapters: 150 }, { id: 20, name: "Proverbios", chapters: 31 },
+    { id: 21, name: "Eclesiastés", chapters: 12 }, { id: 22, name: "Cantares", chapters: 8 },
+    { id: 23, name: "Isaías", chapters: 66 }, { id: 24, name: "Jeremías", chapters: 52 },
+    { id: 25, name: "Lamentaciones", chapters: 5 }, { id: 26, name: "Ezequiel", chapters: 48 },
+    { id: 27, name: "Daniel", chapters: 12 }, { id: 28, name: "Oseas", chapters: 14 },
+    { id: 29, name: "Joel", chapters: 3 }, { id: 30, name: "Amós", chapters: 9 },
+    { id: 31, name: "Abdías", chapters: 1 }, { id: 32, name: "Jonás", chapters: 4 },
+    { id: 33, name: "Miqueas", chapters: 7 }, { id: 34, name: "Nahúm", chapters: 3 },
+    { id: 35, name: "Habacuc", chapters: 3 }, { id: 36, name: "Sofonías", chapters: 3 },
+    { id: 37, name: "Hageo", chapters: 2 }, { id: 38, name: "Zacarías", chapters: 14 },
+    { id: 39, name: "Malaquías", chapters: 4 }, { id: 40, name: "Mateo", chapters: 28 },
+    { id: 41, name: "Marcos", chapters: 16 }, { id: 42, name: "Lucas", chapters: 24 },
+    { id: 43, name: "Juan", chapters: 21 }, { id: 44, name: "Hechos", chapters: 28 },
+    { id: 45, name: "Romanos", chapters: 16 }, { id: 46, name: "1 Corintios", chapters: 16 },
+    { id: 47, name: "2 Corintios", chapters: 13 }, { id: 48, name: "Gálatas", chapters: 6 },
+    { id: 49, name: "Efesios", chapters: 6 }, { id: 50, name: "Filipenses", chapters: 4 },
+    { id: 51, name: "Colosenses", chapters: 4 }, { id: 52, name: "1 Tesalonicenses", chapters: 5 },
+    { id: 53, name: "2 Tesalonicenses", chapters: 3 }, { id: 54, name: "1 Timoteo", chapters: 6 },
+    { id: 55, name: "2 Timoteo", chapters: 4 }, { id: 56, name: "Tito", chapters: 3 },
+    { id: 57, name: "Filemón", chapters: 1 }, { id: 58, name: "Hebreos", chapters: 13 },
+    { id: 59, name: "Santiago", chapters: 5 }, { id: 60, name: "1 Pedro", chapters: 5 },
+    { id: 61, name: "2 Pedro", chapters: 3 }, { id: 62, name: "1 Juan", chapters: 5 },
+    { id: 63, name: "2 Juan", chapters: 1 }, { id: 64, name: "3 Juan", chapters: 1 },
+    { id: 65, name: "Judas", chapters: 1 }, { id: 66, name: "Apocalipsis", chapters: 22 }
+  ];
+
+  let SQL = null;
+  let dbInstances = { rv: null, btx: null, cmtx: null, dctx: null };
+  let currentMode = 'parallel';
+  let favorites = JSON.parse(localStorage.getItem('bible_favorites_v1') || '[]');
+  let fontSize = 18;
+
+  // Base de datos IndexedDB para persistencia Offline total
+  function openIndexedDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('BiblesPreloadedDB', 1);
+      req.onupgradeneeded = (e) => {
+        e.target.result.createObjectStore('sqliteFiles');
+      };
+      req.onsuccess = (e) => resolve(e.target.result);
+      req.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  async function saveToIDB(key, uint8Array) {
+    const idb = await openIndexedDB();
+    return new Promise((resolve, reject) => {
+      const tx = idb.transaction('sqliteFiles', 'readwrite');
+      tx.objectStore('sqliteFiles').put(uint8Array, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  async function loadFromIDB(key) {
+    const idb = await openIndexedDB();
+    return new Promise((resolve, reject) => {
+      const tx = idb.transaction('sqliteFiles', 'readonly');
+      const req = tx.objectStore('sqliteFiles').get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  // Arranque automático al entrar a la página
+  window.addEventListener('DOMContentLoaded', async () => {
+    initSelectors();
+    updateFavCounter();
+
+    const loadingText = document.getElementById('loadingText');
+    const loadingBar = document.getElementById('loadingBar');
+
+    try {
+      SQL = await initSqlJs({
+        locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
+      });
+
+      for (let i = 0; i < SERVER_FILES.length; i++) {
+        const item = SERVER_FILES[i];
+        loadingBar.style.width = `${Math.round((i / SERVER_FILES.length) * 100)}%`;
+
+        // 1. Verificar si ya está guardado en la memoria offline del navegador
+        let buffer = await loadFromIDB(item.key);
+
+        if (buffer) {
+          loadingText.textContent = `Cargando desde memoria offline: ${item.label}...`;
+          dbInstances[item.key] = new SQL.Database(new Uint8Array(buffer));
+        } else {
+          // 2. Si no está en caché, descargarlo automáticamente del servidor y guardarlo offline
+          loadingText.textContent = `Descargando del servidor por única vez: ${item.label}...`;
+          const response = await fetch(encodeURI(item.url));
+          if (!response.ok) {
+            throw new Error(`No se encontró "${item.url}" en el servidor (HTTP ${response.status})`);
+          }
+          const arrayBuffer = await response.arrayBuffer();
+          const uint8 = new Uint8Array(arrayBuffer);
+          dbInstances[item.key] = new SQL.Database(uint8);
+          await saveToIDB(item.key, uint8);
+        }
+      }
+
+      loadingBar.style.width = '100%';
+      loadingText.textContent = '¡Biblias listas para lectura offline!';
+      setTimeout(() => {
+        document.getElementById('loadingOverlay').classList.add('hidden');
+      }, 250);
+
+      loadChapter();
+    } catch (err) {
+      console.error(err);
+      loadingText.innerHTML = `<span style="color:#dc2626; font-weight:700;">Error al cargar archivos del servidor:</span><br>${err.message}`;
+      document.getElementById('loadingSubtext').innerHTML = `Verifica que los 4 archivos (<code>Biblia Reina Valera 1960.bblx</code>, <code>01-BTX4.bbli</code>, <code>01-BTX4.cmti</code> y <code>01-BTX4.dcti</code>) estén subidos en la misma carpeta que este <code>index.html</code>.`;
+    }
+  });
+
+  // Botón para forzar recarga desde el servidor si actualizas algún archivo
+  async function resyncFromServer() {
+    if (!confirm("¿Deseas volver a descargar las Biblias desde el servidor y actualizar la memoria offline?")) return;
+    const idb = await openIndexedDB();
+    const tx = idb.transaction('sqliteFiles', 'readwrite');
+    tx.objectStore('sqliteFiles').clear();
+    tx.oncomplete = () => location.reload();
+  }
+
+  function initSelectors() {
+    const bookSel = document.getElementById('bookSelect');
+    bookSel.innerHTML = BOOKS.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+    onBookChange(false);
+  }
+
+  function onBookChange(triggerLoad = true) {
+    const bookId = parseInt(document.getElementById('bookSelect').value);
+    const book = BOOKS.find(b => b.id === bookId);
+    const chapSel = document.getElementById('chapterSelect');
+    let html = '';
+    for (let i = 1; i <= book.chapters; i++) {
+      html += `<option value="${i}">Capítulo ${i}</option>`;
+    }
+    chapSel.innerHTML = html;
+    if (triggerLoad) loadChapter();
+  }
+
+  // Limpiador de formato RTF (Reina Valera 1960) y HTML/UTF-16 (BTX4)
+  function cleanBibleText(raw, isBTX = false) {
+    if (!raw) return "";
+    let text = String(raw);
+
+    if (text.includes('\u0000')) {
+      text = text.replace(/\u0000/g, '');
+    }
+
+    // Formatear títulos RTF de la RV1960
+    text = text.replace(/\{\\qc\s*\\b\s*([^}]+)\\par\s*\}/gi, '<strong style="display:block; margin-bottom:0.35rem; color:var(--accent-color);">$1</strong>');
+    text = text.replace(/\{\\super\\cf6\s*\([A-Z0-9a-z]+\)\}/g, '');
+    text = text.replace(/\{\\super\\cf6\s*\[[A-Z0-9a-z]+\]\}/g, '');
+    text = text.replace(/\\'[0-9a-fA-F]{2}/g, (m) => String.fromCharCode(parseInt(m.slice(2), 16)));
+    text = text.replace(/\\par\b/g, ' ')
+               .replace(/\\i\b/g, '')
+               .replace(/\\b\b/g, '')
+               .replace(/[{}]/g, '');
+
+    if (isBTX) {
+      text = text.replace(/§(\d+)/g, `<span class="dict-link" onclick="openDictTopic('$1')" title="Abrir Nota Especial §$1">§$1</span>`);
+    }
+
+    return text.trim();
+  }
+
+  function getChapterVerses(dbKey, book, chapter) {
+    const db = dbInstances[dbKey];
+    const results = {};
+    if (!db) return results;
+
+    try {
+      const stmt = db.prepare("SELECT Verse, Scripture FROM Bible WHERE Book = :b AND Chapter = :c ORDER BY Verse ASC");
+      stmt.bind({ ':b': book, ':c': chapter });
+      while (stmt.step()) {
+        const row = stmt.getAsObject();
+        results[row.Verse] = cleanBibleText(row.Scripture, dbKey === 'btx');
+      }
+      stmt.free();
+    } catch (e) {
+      console.error("Error leyendo " + dbKey, e);
+    }
+    return results;
+  }
+
+  function getChapterComments(book, chapter) {
+    const db = dbInstances.cmtx;
+    const comments = {};
+    if (!db) return comments;
+
+    try {
+      const stmt = db.prepare("SELECT VerseBegin, Comments FROM VerseCommentary WHERE Book = :b AND ChapterBegin = :c");
+      stmt.bind({ ':b': book, ':c': chapter });
+      while (stmt.step()) {
+        const row = stmt.getAsObject();
+        comments[row.VerseBegin] = cleanBibleText(row.Comments, true);
+      }
+      stmt.free();
+    } catch (e) {}
+    return comments;
+  }
+
+  function loadChapter() {
+    if (currentMode === 'favs') {
+      renderFavorites();
+      return;
+    }
+
+    const bookId = parseInt(document.getElementById('bookSelect').value);
+    const chapter = parseInt(document.getElementById('chapterSelect').value);
+    const bookObj = BOOKS.find(b => b.id === bookId);
+
+    document.getElementById('currentTitle').textContent = `${bookObj.name} ${chapter}`;
+
+    const rvVerses = getChapterVerses('rv', bookId, chapter);
+    const btxVerses = getChapterVerses('btx', bookId, chapter);
+    const btxComments = getChapterComments(bookId, chapter);
+
+    const allVerseNums = Array.from(
+      new Set([...Object.keys(rvVerses), ...Object.keys(btxVerses)].map(Number))
+    ).sort((a, b) => a - b);
+
+    const container = document.getElementById('versesList');
+
+    container.innerHTML = allVerseNums.map(v => {
+      const rvText = rvVerses[v] || '<em style="color:var(--text-secondary)">—</em>';
+      const btxText = btxVerses[v] || '<em style="color:var(--text-secondary)">—</em>';
+      const commentHtml = btxComments[v]
+        ? `<div class="comment-box"><strong>Comentario BTX4:</strong> ${btxComments[v]}</div>`
+        : '';
+
+      const favId = `${bookId}-${chapter}-${v}`;
+      const isFav = favorites.some(f => f.id === favId);
+
+      let contentHtml = '';
+      if (currentMode === 'parallel') {
+        contentHtml = `
+          <div>
+            <span class="version-tag tag-rv">Reina Valera 1960</span>
+            <div><span class="verse-num">${v}</span>${rvText}</div>
+          </div>
+          <div>
+            <span class="version-tag tag-btx">Biblia Textual IV</span>
+            <div><span class="verse-num">${v}</span>${btxText}</div>
+            ${commentHtml}
+          </div>`;
+      } else if (currentMode === 'rv') {
+        contentHtml = `
+          <div>
+            <span class="version-tag tag-rv">Reina Valera 1960</span>
+            <div><span class="verse-num">${v}</span>${rvText}</div>
+          </div>`;
+      } else if (currentMode === 'btx') {
+        contentHtml = `
+          <div>
+            <span class="version-tag tag-btx">Biblia Textual IV</span>
+            <div><span class="verse-num">${v}</span>${btxText}</div>
+            ${commentHtml}
+          </div>`;
+      }
+
+      return `
+        <div class="verse-row ${currentMode === 'parallel' ? 'parallel' : ''}" id="v-${v}">
+          ${contentHtml}
+          <div class="verse-actions" style="grid-column: 1 / -1;">
+            <button class="action-btn ${isFav ? 'fav-active' : ''}" onclick="toggleFavorite(${bookId}, ${chapter}, ${v})">
+              ${isFav ? '⭐ Guardado en Favoritos' : '☆ Favorito'}
+            </button>
+            <button class="action-btn" onclick="copyVerse(${bookId}, ${chapter}, ${v})">📋 Copiar</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // Abrir nota especial del Diccionario BTX4 (01-BTX4.dcti)
+  function openDictTopic(topicNum) {
+    const db = dbInstances.dctx;
+    const padded = String(topicNum).padStart(3, '0');
+    let definition = null;
+
+    if (db) {
+      try {
+        const stmt = db.prepare("SELECT Topic, Definition FROM Dictionary WHERE Topic LIKE :t LIMIT 1");
+        stmt.bind({ ':t': `%${padded}%` });
+        if (stmt.step()) {
+          definition = stmt.getAsObject().Definition;
+        }
+        stmt.free();
+      } catch (e) {}
+    }
+
+    document.getElementById('modalTitle').textContent = `Nota Especial BTX4 — §${padded}`;
+    document.getElementById('modalBody').innerHTML = definition || `<p>No se encontró la entrada §${padded}.</p>`;
+    document.getElementById('modalBackdrop').style.display = 'flex';
+  }
+
+  function closeModal() {
+    document.getElementById('modalBackdrop').style.display = 'none';
+  }
+
+  function setMode(mode) {
+    currentMode = mode;
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`mode-${mode}`).classList.add('active');
+
+    if (mode === 'favs') {
+      document.getElementById('readerSection').classList.add('hidden');
+      document.getElementById('favsSection').classList.remove('hidden');
+      renderFavorites();
+    } else {
+      document.getElementById('favsSection').classList.add('hidden');
+      document.getElementById('readerSection').classList.remove('hidden');
+      loadChapter();
+    }
+  }
+
+  // Gestión de Versículos Favoritos
+  function toggleFavorite(bookId, chapter, verse) {
+    const id = `${bookId}-${chapter}-${verse}`;
+    const idx = favorites.findIndex(f => f.id === id);
+
+    if (idx >= 0) {
+      favorites.splice(idx, 1);
+    } else {
+      const bookName = BOOKS.find(b => b.id === bookId).name;
+      const rvVerses = getChapterVerses('rv', bookId, chapter);
+      const btxVerses = getChapterVerses('btx', bookId, chapter);
+
+      favorites.unshift({
+        id,
+        bookId,
+        bookName,
+        chapter,
+        verse,
+        rvText: rvVerses[verse] || '',
+        btxText: btxVerses[verse] || '',
+        note: '',
+        createdAt: new Date().toLocaleDateString('es-CL')
+      });
+    }
+
+    saveFavorites();
+    loadChapter();
+  }
+
+  function saveFavorites() {
+    localStorage.setItem('bible_favorites_v1', JSON.stringify(favorites));
+    updateFavCounter();
+  }
+
+  function updateFavCounter() {
+    document.getElementById('favCount').textContent = favorites.length;
+  }
+
+  function renderFavorites() {
+    const list = document.getElementById('favsList');
+    if (favorites.length === 0) {
+      list.innerHTML = `
+        <div class="verse-row" style="text-align:center; padding:2.5rem;">
+          <h3>Aún no tienes versículos guardados</h3>
+          <p style="color:var(--text-secondary);">Haz clic en <strong>☆ Favorito</strong> en cualquier versículo para añadirlo a tu colección.</p>
+        </div>`;
+      return;
+    }
+
+    list.innerHTML = favorites.map(f => `
+      <div class="fav-card">
+        <div class="fav-header">
+          <span style="cursor:pointer; color:var(--accent-color);" onclick="goToVerse(${f.bookId}, ${f.chapter}, ${f.verse})">
+            📖 ${f.bookName} ${f.chapter}:${f.verse} <small style="color:var(--text-secondary); font-weight:normal;">(${f.createdAt})</small>
+          </span>
+          <button onclick="removeFavorite('${f.id}')" style="color:#dc2626;">🗑️ Quitar</button>
+        </div>
+        <div class="verse-row parallel" style="border:none; padding:0;">
+          <div>
+            <span class="version-tag tag-rv">RV 1960</span>
+            <p>${f.rvText}</p>
+          </div>
+          <div>
+            <span class="version-tag tag-btx">BTX 4</span>
+            <p>${f.btxText}</p>
+          </div>
+        </div>
+        <textarea class="fav-note" rows="2" placeholder="Añade una nota personal a este versículo..." onchange="updateFavNote('${f.id}', this.value)">${f.note || ''}</textarea>
+      </div>
+    `).join('');
+  }
+
+  function updateFavNote(id, note) {
+    const item = favorites.find(f => f.id === id);
+    if (item) {
+      item.note = note;
+      saveFavorites();
+    }
+  }
+
+  function removeFavorite(id) {
+    favorites = favorites.filter(f => f.id !== id);
+    saveFavorites();
+    renderFavorites();
+  }
+
+  function goToVerse(bookId, chapter, verse) {
+    document.getElementById('bookSelect').value = bookId;
+    onBookChange(false);
+    document.getElementById('chapterSelect').value = chapter;
+    setMode('parallel');
+    setTimeout(() => {
+      const el = document.getElementById(`v-${verse}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+  }
+
+  function exportFavorites() {
+    const blob = new Blob([JSON.stringify(favorites, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'versiculos_favoritos.json';
+    a.click();
+  }
+
+  function importFavorites(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        favorites = JSON.parse(reader.result);
+        saveFavorites();
+        renderFavorites();
+      } catch (err) {
+        alert("Archivo JSON no válido.");
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function searchBibles() {
+    const query = document.getElementById('searchInput').value.trim();
+    if (query.length < 3) return;
+
+    setMode('parallel');
+    document.getElementById('currentTitle').textContent = `Búsqueda: "${query}"`;
+    const container = document.getElementById('versesList');
+    const results = [];
+
+    ['rv', 'btx'].forEach(key => {
+      const db = dbInstances[key];
+      if (!db) return;
+      try {
+        const stmt = db.prepare("SELECT Book, Chapter, Verse, Scripture FROM Bible WHERE Scripture LIKE :q LIMIT 60");
+        stmt.bind({ ':q': `%${query}%` });
+        while (stmt.step()) {
+          const r = stmt.getAsObject();
+          results.push({
+            version: key === 'rv' ? 'RV 1960' : 'BTX 4',
+            bookId: r.Book,
+            chapter: r.Chapter,
+            verse: r.Verse,
+            text: cleanBibleText(r.Scripture, key === 'btx')
+          });
+        }
+        stmt.free();
+      } catch (e) {}
+    });
+
+    container.innerHTML = results.length
+      ? results.map(r => {
+          const bName = (BOOKS.find(b => b.id === r.bookId) || { name: 'Libro' }).name;
+          return `
+            <div class="verse-row" onclick="goToVerse(${r.bookId}, ${r.chapter}, ${r.verse})" style="cursor:pointer;">
+              <span class="version-tag ${r.version === 'RV 1960' ? 'tag-rv' : 'tag-btx'}">${r.version}</span>
+              <strong>${bName} ${r.chapter}:${r.verse}</strong> — ${r.text}
+            </div>`;
+        }).join('')
+      : `<div class="verse-row">No se encontraron resultados para "${query}".</div>`;
+  }
+
+  function prevChapter() {
+    const chapSel = document.getElementById('chapterSelect');
+    const bookSel = document.getElementById('bookSelect');
+    if (chapSel.selectedIndex > 0) {
+      chapSel.selectedIndex--;
+      loadChapter();
+    } else if (bookSel.selectedIndex > 0) {
+      bookSel.selectedIndex--;
+      onBookChange(false);
+      chapSel.selectedIndex = chapSel.options.length - 1;
+      loadChapter();
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function nextChapter() {
+    const chapSel = document.getElementById('chapterSelect');
+    const bookSel = document.getElementById('bookSelect');
+    if (chapSel.selectedIndex < chapSel.options.length - 1) {
+      chapSel.selectedIndex++;
+      loadChapter();
+    } else if (bookSel.selectedIndex < bookSel.options.length - 1) {
+      bookSel.selectedIndex++;
+      onBookChange(true);
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function copyVerse(bookId, chapter, verse) {
+    const bookName = BOOKS.find(b => b.id === bookId).name;
+    const rv = getChapterVerses('rv', bookId, chapter)[verse] || '';
+    const btx = getChapterVerses('btx', bookId, chapter)[verse] || '';
+    const cleanStrip = s => s.replace(/<[^>]+>/g, '');
+    navigator.clipboard.writeText(`${bookName} ${chapter}:${verse}\n[RV1960] ${cleanStrip(rv)}\n[BTX4] ${cleanStrip(btx)}`);
+  }
+
+  function changeFontSize(delta) {
+    fontSize = Math.min(28, Math.max(14, fontSize + delta));
+    document.documentElement.style.setProperty('--font-size', fontSize + 'px');
+  }
+
+  function toggleTheme() {
+    const isDark = document.body.getAttribute('data-theme') === 'dark';
+    document.body.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  }
+</script>
+</body>
+</html>
